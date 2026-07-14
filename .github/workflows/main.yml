@@ -1,0 +1,50 @@
+name: Main
+
+permissions:
+  id-token: write
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Yandex Cloud IAM token
+        id: get-iam-token
+        uses: docker://ghcr.io/yc-actions/yc-iam-token-fed:1.0.0
+        with:
+          yc-sa-id: ajedpn3pcsv4md2u4esg
+      - name: Install Yandex Cloud CLI
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+      - name: Use Yandex Cloud CLI
+        run: |
+          echo YC_IAM_TOKEN
+          yc config set cloud-id b1g0kocdf7fsn586ggt7
+          yc config set folder-id b1glusfulhm6197odlbo
+          yc iam service-account list
+          yc storage bucket list
+          EPHEMERAL_KEY=$(yc iam access-key issue-ephemeral --session-name github --format json)
+          echo "AWS_ACCESS_KEY_ID=$(echo $EPHEMERAL_KEY | jq -r '.access_key_id')" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$(echo $EPHEMERAL_KEY | jq -r '.secret')" >> $GITHUB_ENV
+        env:
+          YC_IAM_TOKEN: ${{ steps.get-iam-token.outputs.token }}
+      - name: Upload temporary file to bucket
+        run: |
+          echo "Test file created at $(date)" > file.txt
+          echo $AWS_ACCESS_KEY_ID
+          echo $AWS_SECRET_ACCESS_KEY
+          aws configure set default.s3.signature_version s3v4
+          aws configure set default.region ru-central1
+          aws s3 cp file.txt s3://enprokopiev/file.txt --endpoint-url https://storage.yandexcloud.net
+          curl https://storage.yandexcloud.net/enprokopiev/file.txt
+        env:
+          AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
